@@ -1,0 +1,243 @@
+pipeline{
+    agent{
+     label 'phx3181b3a'
+    }
+    parameters{
+        string defaultValue: 'rbabu', description: 'Please give your NIS account', name: 'SUBMITTED_BY', trim: true
+        choice choices: ['JDK8', 'JDK11', 'JDK20', 'GraalVM8', 'GraalVM11'], description: 'Select the JDK Version', name: 'JDK_VERSION'
+        string defaultValue: '/net/wls-storage.devweblogic.oraclevcn.com/wls-qa/jdk/jdk8/jdk1.8.0_351', description: '''Any Valid NFS location based on JDK_VERSION
+                            JDK 8  : /net/wls-storage.devweblogic.oraclevcn.com/wls-qa/jdk/jdk8/jdk1.8.0_351
+                            JDK 11 :  /net/wls-storage.devweblogic.oraclevcn.com/wls-qa/jdk//jdk11/jdk-11.0.16
+                            GraalVM8: /net/wlsqainfra-jenkins.us.oracle.com/scratch/wlsqainfra/graalVm/graalvm-ee-java8-20.3.0-dev/
+                            GraalVM11: /net/wlsqainfra-jenkins.us.oracle.com/scratch/wlsqainfra/graalVm/graalvm-ee-java11-20.2.0-dev
+                            JDK20 : /net/wls-storage.devweblogic.oraclevcn.com/wls-qa/jdk/jdk20/jdk-20''', name: 'REMOTE_JDK_INSTALL', trim: true
+        string defaultValue: '$WLS_SHIPHOME_ROOT_DIR/release/src141200/fmw_14.1.2.0.0_wls_generic.jar', description: 'Please pass valid NFS location.', name: 'SHIPHOME_WLS', trim: true
+        string defaultValue: '$WLS_SHIPHOME_ROOT_DIR/release/src141200/fmw_14.1.2.0.0_infrastructure_generic.jar', description: '', name: 'SHIPHOME_JRF_WLS', trim: true
+        string defaultValue: '1', description: 'GTLF Stage for milestone in TLP link. Results will be published in TLP under $GTLF_STAGE', name: 'GTLF_STAGE', trim: true
+        string defaultValue: 'none', description: 'none,risk1_baseline,risk2_inprogress,risk3_detailed,risk4_exhaustive,cert_pack', name: 'RISK_TO_RUN', trim: true
+        choice choices: ['', 'Appcontain', 'CIE', 'Config', 'Console', 'Core', 'Datasource', 'Deploy', 'Diagnostics', 'Ejb', 'Install', 'Jca', 'Jms', 'Jta', 'LifeCycle', 'Misc', 'Plugins', 'Samples', 'Sca', 'Security', 'Spring', 'Upgrade', 'Upperstack', 'Webapp', 'Webservice', 'WlsOperator', 'ZDTPatching', 'ALL'], description: 'Please select one Subsystem to run specific run key or sub system', name: 'SUBSYSTEMS'
+        string defaultValue: 'true', description: 'If when we are running specific run key', name: 'RUNKEY_ONLY', trim: true
+        string defaultValue: 'diagnostics-label-mats', description: 'if RUNKEY_ONLY is true only this specific run key will get executed.  One run key at a time.', name: 'RUNKEY', trim: true
+        string defaultValue: '', description: 'Please give valid CHANGELIST Number to unshelve and run tests in Farm .', name: 'SHELVED_CHANGELIST_NO', trim: true
+        string defaultValue: '', description: '''If required pass test test Parameters to run command
+               Example : -DjdbcDriversTestFlag=true -DjdbcDriversTestVersion=19900''', name: 'ANT_EXTRA_PARAM', trim: false
+        string defaultValue: 'ranga.babu@oracle.com', description: 'Please give your Mail Id for sharing the Jenkins Job Staus', name: 'USER_MAIL_ID', trim: true    
+
+    }
+    stages{
+        stage("Build"){
+            steps{
+                sh '''
+                /usr/local/packages/aime/ias/run_as_root 'rm -rf /scratch/aime/weblogic/dev/src141200/wlstest/infra/printDTEJobsDetails.html'
+
+echo $SUBSYSTEMS
+
+echo $SHIPHOME_WLS
+
+
+export SRC=src141200
+# Environment Variables
+export ADE_VIEW_ROOT=/scratch/aime/weblogic/dev/$SRC
+export T_WORK=$ADE_VIEW_ROOT/wlstest/infra/
+export JAVA_HOME=/scratch/aime/jdk1.8.0_231
+export PATH=$JAVA_HOME/bin:$PATH
+
+#this is a workaround, because devenv.sh can't run correctly(ANT_HOME not set)
+export ANT_HOME=$ADE_VIEW_ROOT/wlstest/3rdparty/ant/apache-ant-1.9.8
+
+#P4 variables
+export P4CLIENT=bt.phx3181b3a
+export P4PORT=p4jrep.us.oracle.com:7999
+export P4USER=bt
+
+
+cd $ADE_VIEW_ROOT
+/usr/local/packages/aime/ias/run_as_root 'p4 revert ...'
+/usr/local/packages/aime/ias/run_as_root 'p4 sync ...'
+
+# Infra changes for OCI Infra
+
+#/usr/local/packages/aime/ias/run_as_root 'p4 unshelve -s 2115220'
+
+
+
+
+cd $T_WORK
+/usr/local/packages/aime/ias/run_as_root 'pwd'
+echo $RISK_TO_RUN
+# Delete if the files exists
+if [ -d "$RISK_TO_RUN" ]; then
+   /usr/local/packages/aime/ias/run_as_root 'rm -rf $RISK_TO_RUN'
+fi
+
+/usr/local/packages/aime/ias/run_as_root 'mkdir $RISK_TO_RUN'
+/usr/local/packages/aime/ias/run_as_root 'cp *.properties wls-test-config.xml $RISK_TO_RUN'
+/usr/local/packages/aime/ias/run_as_root 'chmod 777 $RISK_TO_RUN/*.properties'
+
+#/usr/local/packages/aime/ias/run_as_root 'sed -i "s|LABEL=|LABEL=ASKERNEL_14.1.2.0.0_GENERIC_221220.1134.3356.S|g" $RISK_TO_RUN/farm.testrun.properties'
+
+
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|$WLS_SHIPHOME_ROOT_DIR/release/$SRC/fmw_14.1.2.0.0_wls_generic.jar|$SHIPHOME_WLS|g" $RISK_TO_RUN/farm.testrun.properties'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|$WLS_SHIPHOME_ROOT_DIR/release/$SRC/fmw_14.1.2.0.0_infrastructure_generic.jar|$SHIPHOME_JRF_WLS|g" $RISK_TO_RUN/farm.testrun.properties'
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|GTLF_STAGE=1|GTLF_STAGE=$GTLF_STAGE ENV:SYNC2LABEL=true|g" $RISK_TO_RUN/farm.testrun.properties'
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|TOPID=101614|TOPID=101771|g" $RISK_TO_RUN/farm.testrun.properties'
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|WLS_JRF_TOPID=101615|WLS_JRF_TOPID=102177|g" $RISK_TO_RUN/farm.testrun.properties'
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|COPY_REMOTE_JDK=false|COPY_REMOTE_JDK=true|g" $RISK_TO_RUN/farm.testrun.properties'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|REMOTE_JDK_TOCOPY=/net/wls-storage.devweblogic.oraclevcn.com/wls-qa/jdk/jdk8/jdk1.8.0_351|REMOTE_JDK_TOCOPY=$REMOTE_JDK_INSTALL|g" $RISK_TO_RUN/farm.testrun.properties'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|USER_NAME=rbabu|USER_NAME=$SUBMITTED_BY|g" $RISK_TO_RUN/farm.testrun.properties'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|RUNKEY_ONLY=false|RUNKEY_ONLY=$RUNKEY_ONLY|g" $RISK_TO_RUN/farm.testrun.properties'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|RUNKEY=diagnostics-label-mats|RUNKEY=$RUNKEY|g" $RISK_TO_RUN/farm.testrun.properties'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|GENERIC_JOB=false|GENERIC_JOB=true|g" $RISK_TO_RUN/farm.testrun.properties'
+
+
+
+if [ $JDK_VERSION == "JDK8" ] ; then
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|GTLF_RELEASE=WLS14.1.2.0.0 -jobzone=UCF|GTLF_RELEASE=WLS14.1.2.0.0_Generic -jobzone=UCF|g" $RISK_TO_RUN/farm.testrun.properties'
+
+else
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|GTLF_RELEASE=WLS14.1.2.0.0 -jobzone=UCF|GTLF_RELEASE=WLS14.1.2.0.0-$JDK_VERSION -jobzone=UCF|g" $RISK_TO_RUN/farm.testrun.properties'
+
+fi
+
+
+#cat $RISK_TO_RUN/farm.testrun.properties
+
+
+if [  ! -z "$SHELVED_CHANGELIST_NO" ] ; then
+
+echo "Running Tests using Sheleved CL# $SHELVED_CHANGELIST_NO"
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|SHELVED_CHANGELIST_NO=|SHELVED_CHANGELIST_NO=$SHELVED_CHANGELIST_NO|g" $RISK_TO_RUN/farm.testrun.properties'
+
+fi
+
+
+if [  ! -z "$ANT_EXTRA_PARAM" ] ; then
+
+echo "Running Tests using ANT extra perameters $ANT_EXTRA_PARAM"
+
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|ANT_EXTRA_PARAM=|ANT_EXTRA_PARAM=$ANT_EXTRA_PARAM|g" $RISK_TO_RUN/farm.testrun.properties'
+
+fi
+
+# Edit the infra.config.properties file with the user given parameters 
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|RISK_CATEGORY=none,risk1_baseline,risk2_inprogress|RISK_CATEGORY=$RISK_TO_RUN|g" $RISK_TO_RUN/infra.config.properties'
+
+
+export JDK_OPTION=""
+
+echo "JDK Version is $JDK_VERSION"
+
+if [ $JDK_VERSION == "JDK11" ] || [ $JDK_VERSION == "GraalVM11" ]; then
+  export JDK_OPTION='-Djdk11=true'
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|JV=|JV=11100|g" $RISK_TO_RUN/farm.testrun.properties' 
+fi
+
+
+if [ $JDK_VERSION == "JDK20" ]; then
+/usr/local/packages/aime/ias/run_as_root 'sed -i "s|JV=|JV=12000|g" $RISK_TO_RUN/farm.testrun.properties' 
+fi
+
+
+# initiate the runs
+
+if [ $SUBSYSTEMS != "ALL" ]; then
+echo "ant nightly $JDK_OPTION -Dshiphomelocation=$SHIPHOME_WLS -Dsubsystems=$SUBSYSTEMS -DfileRoot=$T_WORK/$RISK_TO_RUN 2>&1 | tee nightly$GTLF_STAGE_MATS.out"
+/usr/local/packages/aime/ias/run_as_root 'ant nightly $JDK_OPTION -Dshiphomelocation=$SHIPHOME_WLS -Dsubsystems=$SUBSYSTEMS -DfileRoot=$T_WORK/$RISK_TO_RUN 2>&1 | tee stage$GTLF_STAGE_MATS.out'
+else 
+echo "ant nightly $JDK_OPTION -Dshiphomelocation=$SHIPHOME_WLS -DfileRoot=$T_WORK/$RISK_TO_RUN 2>&1 | tee stage$GTLF_STAGE_MATS.out"
+/usr/local/packages/aime/ias/run_as_root 'ant nightly $JDK_OPTION -Dshiphomelocation=$SHIPHOME_WLS -DfileRoot=$T_WORK/$RISK_TO_RUN 2>&1 | tee nightly$GTLF_STAGE_MATS.out'
+
+fi
+
+
+# Delete the created files
+/usr/local/packages/aime/ias/run_as_root 'rm -rf $RISK_TO_RUN'
+
+/usr/local/packages/aime/ias/run_as_root 'cp -rf /scratch/aime/weblogic/dev/src141200/wlstest/infra/printDTEJobsDetails.html ${WORKSPACE}/.'
+                
+                
+                
+                '''
+            }
+        }
+        
+    }
+    post{
+        always{
+            emailext attachLog: true, body: '''<style>
+table, th, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+</style>
+<h3> Note : </h3>  This Jenkins Job takes care of  only submitting the jobs to Farm .
+<br>
+<br>
+<br><center>
+<h3>DTE Job details (Check DTE Job Status )</h3>
+<br>
+<br>
+${FILE,path="printDTEJobsDetails.html"}
+<br>
+<br>
+<h3>Inputs to Jenkins Job</h3>
+<br>
+<br>
+<table>
+ <tr>
+    <th>Input to Job</th>
+    <th>Values</th>
+    </tr>
+ <tr><td>JDK used </td><td>$REMOTE_JDK_INSTALL</td></tr>	
+ <tr><td>WLS Shiphome Location:</td><td>$SHIPHOME_WLS</td></tr>	
+ <tr><td>JRF Shiphome Location</td><td>$SHIPHOME_JRF_WLS</td></tr>	
+ <tr><td>Milestone in TLP</td><td>$GTLF_STAGE</td></tr>	
+ <tr><td>RISK Categories</td><td>$RISK_TO_RUN</td></tr>	
+ <tr><td>Submitted User </td><td>$USER_MAIL_ID</td></tr>	
+ <tr><td>Subsystem</td><td>$SUBSYSTEMS</td></tr>	
+ <tr><td>RUNKEY_ONLY </td><td>$RUNKEY_ONLY</td></tr>	
+ <tr><td>RUNKEY (Valid when RUNKEY_ONLY is true)</td><td>$RUNKEY</td></tr>	
+  <tr><td>Shelved Changelist Number</td><td>$SHELVED_CHANGELIST_NO</td></tr>	
+</table>
+<br>
+<br>
+<h3>Results published to TLP based on Risk Category</h3>
+<br>
+<br>
+<table>
+  <tr>
+    <th>Run Category</th>
+    <th>TLP Links</th>
+    </tr>
+    <tr>
+    <th scope="row">SRG (MATS/None)</th>
+    <td><a href="http://tlp.us.oracle.com/#product=wls&version=WLS14.1.2.0.0_Generic&branch=askernel_14_1_2_0_0&category=daily&area=srg&milestone=$GTLF_STAGE&team=$SUBSYSTEMS" >SRG (MATS)</a></td>
+  </tr>
+  <tr>
+    <th scope="row">MRG (R1/R2)</th>
+    <td><a href="http://tlp.us.oracle.com/#product=wls&version=WLS14.1.2.0.0_Generic&branch=askernel_14_1_2_0_0&category=daily&area=mrg&milestone=$GTLF_STAGE&team=$SUBSYSTEMS"> MRG (R1/R2)</a>
+</td>
+  </tr>
+  <tr>
+    <th scope="row">LRG (R3/R4/CertPack)</th>
+    <td><a href="http://tlp.us.oracle.com/#product=wls&version=WLS14.1.2.0.0_Generic&branch=askernel_14_1_2_0_0&category=daily&area=lrg&milestone=$GTLF_STAGE&team=$SUBSYSTEMS">LRG (R3/R4/CertPack)</a>
+</td>
+  </tr>
+</table>
+</center>
+<br>
+<br>
+
+Check Jenkins Job Build Link for More details : <a href="https://wlsqainfra-jenkins.us.oracle.com/view/Generic%20Jobs/job/WLSQA_Subsystem_Runkey_Job_141200/$BUILD_NUMBER/console"> Jenkins Job Console Output</a>
+''', mimeType: 'text/html', postsendScript: '$DEFAULT_POSTSEND_SCRIPT', presendScript: '$DEFAULT_PRESEND_SCRIPT', replyTo: '$USER_MAIL_ID', subject: 'Recent Jenkins Job Build Status is: $BUILD_STATUS', to: '$USER_MAIL_ID'
+        }
+    }
+}
